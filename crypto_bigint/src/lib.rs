@@ -158,7 +158,7 @@ mod checked;
 mod limb;
 mod non_zero;
 mod traits;
-mod uint;
+pub mod uint;
 mod wrapping;
 pub use crate::{
     checked::Checked,
