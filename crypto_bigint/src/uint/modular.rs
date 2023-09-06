@@ -4,7 +4,7 @@ pub mod constant_mod;
 mod inv;
 mod mul;
 mod pow;
-mod reduction;
+pub mod reduction;
 /// Implements `DynResidue`s, supporting modular arithmetic with a modulus set at runtime.
 pub mod runtime_mod;
 mod sub;
