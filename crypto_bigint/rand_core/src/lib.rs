@@ -76,17 +76,12 @@ pub mod le;
 /// [`next_u32`] or [`next_u64`] since the latter methods are almost always used
 /// with algorithmic generators (PRNGs), which are normally infallible.
 ///
-/// Implementers should produce bits uniformly. Pathological RNGs (e.g. always
-/// returning the same value, or never setting certain bits) can break rejection
-/// sampling used by random distributions, and also break other RNGs when
-/// seeding them via [`SeedableRng::from_rng`].
-///
 /// Algorithmic generators implementing [`SeedableRng`] should normally have
 /// *portable, reproducible* output, i.e. fix Endianness when converting values
 /// to avoid platform differences, and avoid making any changes which affect
 /// output (except by communicating that the release has breaking changes).
 ///
-/// Typically an RNG will implement only one of the methods available
+/// Typically implementators will implement only one of the methods available
 /// in this trait directly, then use the helper functions from the
 /// [`impls`] module to implement the other methods.
 ///
@@ -305,30 +300,20 @@ pub trait SeedableRng: Sized {
     /// considered a value-breaking change.
     fn seed_from_u64(mut state: u64) -> Self {
         // We use PCG32 to generate a u32 sequence, and copy to the seed
-        fn pcg32(state: &mut u64) -> [u8; 4] {
-            const MUL: u64 = 6364136223846793005;
-            const INC: u64 = 11634580027462260723;
+        const MUL: u64 = 6364136223846793005;
+        const INC: u64 = 11634580027462260723;
 
+        let mut seed = Self::Seed::default();
+        for chunk in seed.as_mut().chunks_mut(4) {
             // We advance the state first (to get away from the input value,
             // in case it has low Hamming Weight).
-            *state = state.wrapping_mul(MUL).wrapping_add(INC);
-            let state = *state;
+            state = state.wrapping_mul(MUL).wrapping_add(INC);
 
             // Use PCG output function with to_le to generate x:
             let xorshifted = (((state >> 18) ^ state) >> 27) as u32;
             let rot = (state >> 59) as u32;
             let x = xorshifted.rotate_right(rot);
-            x.to_le_bytes()
-        }
-
-        let mut seed = Self::Seed::default();
-        let mut iter = seed.as_mut().chunks_exact_mut(4);
-        for chunk in &mut iter {
-            chunk.copy_from_slice(&pcg32(&mut state));
-        }
-        let rem = iter.into_remainder();
-        if !rem.is_empty() {
-            rem.copy_from_slice(&pcg32(&mut state)[..rem.len()]);
+            chunk.copy_from_slice(&x.to_le_bytes());
         }
 
         Self::from_seed(seed)
@@ -485,7 +470,7 @@ mod test {
             // This is the binomial distribution B(64, 0.5), so chance of
             // weight < 20 is binocdf(19, 64, 0.5) = 7.8e-4, and same for
             // weight > 44.
-            assert!((20..=44).contains(&weight));
+            assert!(weight >= 20 && weight <= 44);
 
             for (i2, r2) in results.iter().enumerate() {
                 if i1 == i2 {

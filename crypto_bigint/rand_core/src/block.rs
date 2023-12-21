@@ -95,7 +95,7 @@ pub trait BlockRngCore {
 /// [`fill_bytes`] / [`try_fill_bytes`] is called on a large array. These methods
 /// also handle the bookkeeping of when to generate a new batch of values.
 ///
-/// No whole generated `u32` values are thrown away and all values are consumed
+/// No whole generated `u32` values are thown away and all values are consumed
 /// in-order. [`next_u32`] simply takes the next available `u32` value.
 /// [`next_u64`] is implemented by combining two `u32` values, least
 /// significant first. [`fill_bytes`] and [`try_fill_bytes`] consume a whole
@@ -114,12 +114,6 @@ pub trait BlockRngCore {
 /// [`try_fill_bytes`]: RngCore::try_fill_bytes
 #[derive(Clone)]
 #[cfg_attr(feature = "serde1", derive(Serialize, Deserialize))]
-#[cfg_attr(
-    feature = "serde1",
-    serde(
-        bound = "for<'x> R: Serialize + Deserialize<'x> + Sized, for<'x> R::Results: Serialize + Deserialize<'x>"
-    )
-)]
 pub struct BlockRng<R: BlockRngCore + ?Sized> {
     results: R::Results,
     index: usize,
@@ -352,22 +346,27 @@ where
 {
     #[inline]
     fn next_u32(&mut self) -> u32 {
-        if self.index >= self.results.as_ref().len() {
+        let mut index = self.index * 2 - self.half_used as usize;
+        if index >= self.results.as_ref().len() * 2 {
             self.core.generate(&mut self.results);
             self.index = 0;
             // `self.half_used` is by definition `false`
             self.half_used = false;
+            index = 0;
         }
 
         self.half_used = !self.half_used;
         self.index += self.half_used as usize;
 
-        let half_used = if cfg!(target_endian = "little") {
-            self.half_used
-        } else {
-            !self.half_used
-        };
-        (self.results.as_ref()[self.index] >> (32 * (half_used as usize))) as u32
+        // Index as if this is a u32 slice.
+        unsafe {
+            let results = &*(self.results.as_ref() as *const [u64] as *const [u32]);
+            if cfg!(target_endian = "little") {
+                *results.get_unchecked(index)
+            } else {
+                *results.get_unchecked(index ^ 1)
+            }
+        }
     }
 
     #[inline]

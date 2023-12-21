@@ -48,7 +48,7 @@ default = ["rand"]
 alloc = []
 rand = ["rand_core/std"]
 serde = ["serdect"]
-# wasm = ["rand_core/js"]
+wasm = ["rand_core/wasm"]
 
 [package.metadata.docs.rs]
 all-features = true
