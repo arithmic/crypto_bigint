@@ -27,31 +27,31 @@ compile_error!("this crate builds on 32-bit and 64-bit platforms only");
 // 32-bit definitions
 //
 /// Inner integer type that the [`Limb`] newtype wraps.
-#[cfg(target_pointer_width = "32")]
-pub type Word = u32;
+// #[cfg(target_pointer_width = "32")]
+// pub type Word = u32;
 /// Signed integer type that corresponds to [`Word`].
-#[cfg(target_pointer_width = "32")]
-pub(crate) type SignedWord = i32;
+// #[cfg(target_pointer_width = "32")]
+// pub(crate) type SignedWord = i32;
 /// Unsigned wide integer type: double the width of [`Word`].
-#[cfg(target_pointer_width = "32")]
-pub type WideWord = u64;
+// #[cfg(target_pointer_width = "32")]
+// pub type WideWord = u64;
 /// Signed wide integer type: double the width of [`Limb`].
-#[cfg(target_pointer_width = "32")]
-pub(crate) type WideSignedWord = i64;
+// #[cfg(target_pointer_width = "32")]
+// pub(crate) type WideSignedWord = i64;
 //
 // 64-bit definitions
 //
 /// Unsigned integer type that the [`Limb`] newtype wraps.
-#[cfg(target_pointer_width = "64")]
+// #[cfg(target_pointer_width = "64")]
 pub type Word = u64;
 /// Signed integer type that corresponds to [`Word`].
-#[cfg(target_pointer_width = "64")]
+// #[cfg(target_pointer_width = "64")]
 pub(crate) type SignedWord = i64;
 /// Wide integer type: double the width of [`Word`].
-#[cfg(target_pointer_width = "64")]
+// #[cfg(target_pointer_width = "64")]
 pub type WideWord = u128;
 /// Signed wide integer type: double the width of [`SignedWord`].
-#[cfg(target_pointer_width = "64")]
+// #[cfg(target_pointer_width = "64")]
 pub(crate) type WideSignedWord = i128;
 /// Highest bit in a [`Limb`].
 pub(crate) const HI_BIT: usize = Limb::BITS - 1;
@@ -69,17 +69,17 @@ impl Limb {
     pub const MAX: Self = Limb(Word::MAX);
     // 32-bit
     /// Size of the inner integer in bits.
-    #[cfg(target_pointer_width = "32")]
-    pub const BITS: usize = 32;
+    // #[cfg(target_pointer_width = "32")]
+    // pub const BITS: usize = 32;
     /// Size of the inner integer in bytes.
-    #[cfg(target_pointer_width = "32")]
-    pub const BYTES: usize = 4;
+    // #[cfg(target_pointer_width = "32")]
+    // pub const BYTES: usize = 4;
     // 64-bit
     /// Size of the inner integer in bits.
-    #[cfg(target_pointer_width = "64")]
+    // #[cfg(target_pointer_width = "64")]
     pub const BITS: usize = 64;
     /// Size of the inner integer in bytes.
-    #[cfg(target_pointer_width = "64")]
+    // #[cfg(target_pointer_width = "64")]
     pub const BYTES: usize = 8;
     /// Return `a` if `c`==0 or `b` if `c`==`Word::MAX`.
     ///

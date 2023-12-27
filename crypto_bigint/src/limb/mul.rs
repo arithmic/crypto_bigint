@@ -138,14 +138,14 @@ mod tests {
             }
         }
     }
+    // #[test]
+    // #[cfg(target_pointer_width = "32")]
+    // fn checked_mul_ok() {
+    //     let n = Limb::from_u16(0xffff);
+    //     assert_eq!(n.checked_mul(n).unwrap(), Limb::from_u32(0xfffe_0001));
+    // }
     #[test]
-    #[cfg(target_pointer_width = "32")]
-    fn checked_mul_ok() {
-        let n = Limb::from_u16(0xffff);
-        assert_eq!(n.checked_mul(n).unwrap(), Limb::from_u32(0xfffe_0001));
-    }
-    #[test]
-    #[cfg(target_pointer_width = "64")]
+    // #[cfg(target_pointer_width = "64")]
     fn checked_mul_ok() {
         let n = Limb::from_u32(0xffff_ffff);
         assert_eq!(

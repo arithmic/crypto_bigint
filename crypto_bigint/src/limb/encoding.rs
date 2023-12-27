@@ -2,9 +2,9 @@
 use super::{Limb, Word};
 use crate::Encoding;
 impl Encoding for Limb {
-    #[cfg(target_pointer_width = "32")]
-    type Repr = [u8; 4];
-    #[cfg(target_pointer_width = "64")]
+    // #[cfg(target_pointer_width = "32")]
+    // type Repr = [u8; 4];
+    // #[cfg(target_pointer_width = "64")]
     type Repr = [u8; 8];
     #[inline]
     fn from_be_bytes(bytes: Self::Repr) -> Self {

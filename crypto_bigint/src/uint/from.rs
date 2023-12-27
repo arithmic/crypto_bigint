@@ -28,17 +28,17 @@ impl<const LIMBS: usize> Uint<LIMBS> {
     }
     /// Create a [`Uint`] from a `u64` (const-friendly)
     // TODO(tarcieri): replace with `const impl From<u64>` when stable
-    #[cfg(target_pointer_width = "32")]
-    pub const fn from_u64(n: u64) -> Self {
-        assert!(LIMBS >= 2, "number of limbs must be two or greater");
-        let mut limbs = [Limb::ZERO; LIMBS];
-        limbs[0].0 = (n & 0xFFFFFFFF) as u32;
-        limbs[1].0 = (n >> 32) as u32;
-        Self { limbs }
-    }
+    // #[cfg(target_pointer_width = "32")]
+    // pub const fn from_u64(n: u64) -> Self {
+    //     assert!(LIMBS >= 2, "number of limbs must be two or greater");
+    //     let mut limbs = [Limb::ZERO; LIMBS];
+    //     limbs[0].0 = (n & 0xFFFFFFFF) as u32;
+    //     limbs[1].0 = (n >> 32) as u32;
+    //     Self { limbs }
+    // }
     /// Create a [`Uint`] from a `u64` (const-friendly)
     // TODO(tarcieri): replace with `const impl From<u64>` when stable
-    #[cfg(target_pointer_width = "64")]
+    // #[cfg(target_pointer_width = "64")]
     pub const fn from_u64(n: u64) -> Self {
         assert!(LIMBS >= 1, "number of limbs must be greater than zero");
         let mut limbs = [Limb::ZERO; LIMBS];
@@ -120,14 +120,14 @@ impl<const LIMBS: usize> From<u128> for Uint<LIMBS> {
         Self::from_u128(n)
     }
 }
-#[cfg(target_pointer_width = "32")]
-#[cfg_attr(docsrs, doc(cfg(target_pointer_width = "32")))]
-impl From<U64> for u64 {
-    fn from(n: U64) -> u64 {
-        (n.limbs[0].0 as u64) | ((n.limbs[1].0 as u64) << 32)
-    }
-}
-#[cfg(target_pointer_width = "64")]
+// #[cfg(target_pointer_width = "32")]
+// #[cfg_attr(docsrs, doc(cfg(target_pointer_width = "32")))]
+// impl From<U64> for u64 {
+//     fn from(n: U64) -> u64 {
+//         (n.limbs[0].0 as u64) | ((n.limbs[1].0 as u64) << 32)
+//     }
+// }
+// #[cfg(target_pointer_width = "64")]
 #[cfg_attr(docsrs, doc(cfg(target_pointer_width = "64")))]
 impl From<U64> for u64 {
     fn from(n: U64) -> u64 {
@@ -167,10 +167,10 @@ impl<const LIMBS: usize> From<Limb> for Uint<LIMBS> {
 }
 #[cfg(test)]
 mod tests {
-    #[cfg(target_pointer_width = "64")]
+    // #[cfg(target_pointer_width = "64")]
     use crate::U128 as UintEx;
-    #[cfg(target_pointer_width = "32")]
-    use crate::U64 as UintEx;
+    // #[cfg(target_pointer_width = "32")]
+    // use crate::U64 as UintEx;
     use crate::{Limb, Word, U128};
     #[test]
     fn from_u8() {
