@@ -1,6 +1,4 @@
 #![no_std]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
-#![doc = include_str!("../README.md")]
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/RustCrypto/meta/master/logo.svg",
     html_favicon_url = "https://raw.githubusercontent.com/RustCrypto/meta/master/logo.svg"
@@ -17,27 +15,18 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
-
 //! ## Usage
 //!
-//! The core types of `crypto-bigint` are as follows:
+//! This crate defines a [`Uint`] type which is const generic around an inner
+//! [`Limb`] array, where a [`Limb`] is a newtype for a word-sized integer.
+//! Thus large integers are represented as a arrays of smaller integers which
+//! are sized appropriately for the CPU, giving us some assurances of how
+//! arithmetic operations over those smaller integers will behave.
 //!
-//! - [`Uint`]: stack-allocated big integer type, const generic around a number of [`Limb`]s.
-//!   Type aliases are provided for various sizes, e.g. [`U128`], [`U384`], [`U256`], [`U2048`],
-//!   [`U3072`], [`U4096`].
-//! - [`BoxedUint`]: heap-allocated big integer type. Requires the `alloc` crate feature is enabled.
-//!
-//! Big integer types in this crate use a 32-bit or 64-bit saturated representation, depending on
-//! the underlying CPU's pointer width.
-//!
-//! The following types for modular arithmetic are available under the [`modular`] submodule:
-//!
-//! - [`modular::ConstMontyForm`]: stack-allocated type-safe modular arithmetic using Montgomery
-//!   form suitable for cases where the modulus is known at compile-time.
-//! - [`modular::MontyForm`]: stack-allocated modular arithmetic using Montgomery form for cases
-//!   where the modulus is only known at runtime.
-//! - [`modular::BoxedMontyForm`]: heap-allocated modular arithmetic using Montgomery form.
-//!   Requires the `alloc` crate feature is enabled.
+//! To obtain appropriately sized integers regardless of what a given CPU's
+//! word size happens to be, a number of portable type aliases are provided for
+//! integer sizes commonly used in cryptography, for example:
+//! [`U128`], [`U384`], [`U256`], [`U2048`], [`U3072`], [`U4096`].
 //!
 //! ### `const fn` usage
 //!
@@ -53,7 +42,16 @@
 //!     U256::from_be_hex("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
 //!
 //! // Compute `MODULUS` shifted right by 1 at compile time
-//! pub const MODULUS_SHR1: U256 = MODULUS.shr(1);
+//! pub const MODULUS_SHR1: U256 = MODULUS.shr_vartime(1);
+//! ```
+//!
+//! Note that large constant computations may accidentally trigger a the `const_eval_limit` of the compiler.
+//! The current way to deal with this problem is to either simplify this computation,
+//! or increase the compiler's limit (currently a nightly feature).
+//! One can completely remove the compiler's limit using:
+//! ```ignore
+//! #![feature(const_eval_limit)]
+//! #![const_eval_limit = "0"]
 //! ```
 //!
 //! ### Trait-based usage
@@ -109,15 +107,15 @@
 //! assert_eq!(b, U256::ZERO);
 //! ```
 //!
-//! It also supports modular arithmetic over constant moduli using `ConstMontyForm`,
-//! and over moduli set at runtime using `MontyForm`.
+//! It also supports modular arithmetic over constant moduli using `Residue`,
+//! and over moduli set at runtime using `DynResidue`.
 //! That includes modular exponentiation and multiplicative inverses.
 //! These features are described in the [`modular`] module.
 //!
 //! ### Random number generation
 //!
 //! When the `rand_core` or `rand` features of this crate are enabled, it's
-//! possible to generate random numbers using any CSRNG by using the
+//! possible to generate random numbers using any [`CryptoRng`] by using the
 //! [`Random`] trait:
 //!
 //! ```
@@ -149,71 +147,47 @@
 //! [`Mul`]: core::ops::Mul
 //! [`Rem`]: core::ops::Rem
 //! [`Sub`]: core::ops::Sub
-
-#[cfg(feature = "alloc")]
-#[allow(unused_imports)]
-#[macro_use]
+//! [`CryptoRng`]: rand_core::CryptoRng
+#[cfg(all(feature = "alloc", test))]
 extern crate alloc;
-
-#[cfg(feature = "std")]
-extern crate std;
-
 #[macro_use]
-mod macros;
-
-pub mod modular;
-
-#[cfg(feature = "hybrid-array")]
+mod nlimbs;
+#[cfg(feature = "generic-array")]
 mod array;
 mod checked;
-mod const_choice;
 mod limb;
 mod non_zero;
-mod odd;
-mod primitives;
 mod traits;
-mod uint;
+pub mod uint;
 mod wrapping;
-
 pub use crate::{
     checked::Checked,
-    const_choice::{ConstChoice, ConstCtOption},
     limb::{Limb, WideWord, Word},
     non_zero::NonZero,
-    odd::Odd,
     traits::*,
     uint::div_limb::Reciprocal,
     uint::*,
     wrapping::Wrapping,
 };
-pub use subtle;
-
-#[cfg(feature = "alloc")]
-pub use crate::uint::boxed::{encoding::DecodeError, BoxedUint};
-
-#[cfg(feature = "hybrid-array")]
-pub use {
-    crate::array::{ArrayDecoding, ArrayEncoding, ByteArray},
-    hybrid_array::{self, typenum::consts},
-};
-
+pub(crate) use limb::{SignedWord, WideSignedWord};
 #[cfg(feature = "rand_core")]
 pub use rand_core;
-
 #[cfg(feature = "rlp")]
 pub use rlp;
-
+pub use subtle;
 #[cfg(feature = "zeroize")]
 pub use zeroize;
-
+#[cfg(feature = "generic-array")]
+pub use {
+    crate::array::{ArrayDecoding, ArrayEncoding, ByteArray},
+    generic_array::{self, typenum::consts},
+};
 /// Import prelude for this crate: includes important traits.
 pub mod prelude {
-    pub use crate::traits::*;
-
-    #[cfg(feature = "hybrid-array")]
+    #[cfg(feature = "generic-array")]
     pub use crate::array::{ArrayDecoding, ArrayEncoding};
+    pub use crate::traits::*;
 }
-
 #[cfg(sidefuzz)]
 #[no_mangle]
 pub extern "C" fn fuzz() {

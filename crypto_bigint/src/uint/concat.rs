@@ -1,81 +1,52 @@
-use crate::{Concat, ConcatMixed, Limb, Uint};
-
-impl<const L: usize> Uint<L> {
-    /// Concatenate the two values, with `self` as least significant and `hi` as the most
-    /// significant.
-    pub const fn concat<const O: usize>(&self, hi: &Self) -> Uint<O>
-    where
-        Self: Concat<Output = Uint<O>>,
-    {
-        Uint::concat_mixed(self, hi)
-    }
-
-    /// Concatenate the two values, with `lo` as least significant and `hi`
-    /// as the most significant.
-    #[inline]
-    pub const fn concat_mixed<const H: usize, const O: usize>(lo: &Uint<L>, hi: &Uint<H>) -> Uint<O>
-    where
-        Self: ConcatMixed<Uint<H>, MixedOutput = Uint<O>>,
-    {
-        let top = L + H;
-        let top = if top < O { top } else { O };
-        let mut limbs = [Limb::ZERO; O];
-        let mut i = 0;
-
-        while i < top {
-            if i < L {
-                limbs[i] = lo.limbs[i];
-            } else {
-                limbs[i] = hi.limbs[i - L];
+// TODO(tarcieri): use `const_evaluatable_checked` when stable to make generic around bits.
+macro_rules! impl_concat {
+    ($(($name:ident, $bits:expr)),+) => {
+        $(
+            impl $name {
+                /// Concatenate the two values, with `self` as most significant and `rhs`
+                /// as the least significant.
+                pub const fn concat(&self, rhs: &Self) -> Uint<{nlimbs!($bits) * 2}> {
+                    let mut limbs = [Limb::ZERO; nlimbs!($bits) * 2];
+                    let mut i = 0;
+                    let mut j = 0;
+                    while j < nlimbs!($bits) {
+                        limbs[i] = rhs.limbs[j];
+                        i += 1;
+                        j += 1;
+                    }
+                    j = 0;
+                    while j < nlimbs!($bits) {
+                        limbs[i] = self.limbs[j];
+                        i += 1;
+                        j += 1;
+                    }
+                    Uint { limbs }
+                }
             }
-            i += 1;
-        }
-
-        Uint { limbs }
-    }
+            impl Concat for $name {
+                type Output = Uint<{nlimbs!($bits) * 2}>;
+                fn concat(&self, rhs: &Self) -> Self::Output {
+                    self.concat(rhs)
+                }
+            }
+            impl From<($name, $name)> for Uint<{nlimbs!($bits) * 2}> {
+                fn from(nums: ($name, $name)) -> Uint<{nlimbs!($bits) * 2}> {
+                    nums.0.concat(&nums.1)
+                }
+            }
+        )+
+     };
 }
-
-impl<T> Concat for T
-where
-    T: ConcatMixed<T>,
-{
-    type Output = Self::MixedOutput;
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{ConcatMixed, U128, U192, U64};
-
+    use crate::{U128, U64};
     #[test]
     fn concat() {
         let hi = U64::from_u64(0x0011223344556677);
         let lo = U64::from_u64(0x8899aabbccddeeff);
         assert_eq!(
-            lo.concat(&hi),
+            hi.concat(&lo),
             U128::from_be_hex("00112233445566778899aabbccddeeff")
         );
-    }
-
-    #[test]
-    fn concat_mixed() {
-        let hi = U64::from_u64(0x0011223344556677);
-        let lo = U128::from_u128(0x8899aabbccddeeff_8899aabbccddeeff);
-        assert_eq!(
-            lo.concat_mixed(&hi),
-            U192::from_be_hex("00112233445566778899aabbccddeeff8899aabbccddeeff")
-        );
-        assert_eq!(
-            hi.concat_mixed(&lo),
-            U192::from_be_hex("8899aabbccddeeff8899aabbccddeeff0011223344556677")
-        );
-    }
-
-    #[test]
-    fn convert() {
-        let res: U128 = U64::ONE.split_mul(&U64::ONE).into();
-        assert_eq!(res, U128::ONE);
-
-        let res: U128 = U64::ONE.square_wide().into();
-        assert_eq!(res, U128::ONE);
     }
 }

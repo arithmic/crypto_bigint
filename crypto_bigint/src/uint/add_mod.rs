@@ -1,55 +1,57 @@
-//! [`Uint`] modular addition operations.
-
+//! [`Uint`] addition modulus operations.
 use crate::{AddMod, Limb, Uint};
-
 impl<const LIMBS: usize> Uint<LIMBS> {
-    /// Computes `self + rhs mod p`.
+    /// Computes `self + rhs mod p` in constant time.
     ///
     /// Assumes `self + rhs` as unbounded integer is `< 2p`.
-    pub const fn add_mod(&self, rhs: &Self, p: &Self) -> Self {
+    pub const fn add_mod(&self, rhs: &Uint<LIMBS>, p: &Uint<LIMBS>) -> Uint<LIMBS> {
         let (w, carry) = self.adc(rhs, Limb::ZERO);
-
         // Attempt to subtract the modulus, to ensure the result is in the field.
         let (w, borrow) = w.sbb(p, Limb::ZERO);
-        let (_, mask) = carry.sbb(Limb::ZERO, borrow);
-
+        let (_, borrow) = carry.sbb(Limb::ZERO, borrow);
         // If underflow occurred on the final limb, borrow = 0xfff...fff, otherwise
         // borrow = 0x000...000. Thus, we use it as a mask to conditionally add the
         // modulus.
-        w.wrapping_add(&p.bitand_limb(mask))
+        let mut i = 0;
+        let mut res = Self::ZERO;
+        let mut carry = Limb::ZERO;
+        while i < LIMBS {
+            let rhs = p.limbs[i].bitand(borrow);
+            let (limb, c) = w.limbs[i].adc(rhs, carry);
+            res.limbs[i] = limb;
+            carry = c;
+            i += 1;
+        }
+        res
     }
-
-    /// Computes `self + rhs mod p` for the special modulus
+    /// Computes `self + rhs mod p` in constant time for the special modulus
     /// `p = MAX+1-c` where `c` is small enough to fit in a single [`Limb`].
     ///
     /// Assumes `self + rhs` as unbounded integer is `< 2p`.
     pub const fn add_mod_special(&self, rhs: &Self, c: Limb) -> Self {
         // `Uint::adc` also works with a carry greater than 1.
         let (out, carry) = self.adc(rhs, c);
-
         // If overflow occurred, then above addition of `c` already accounts
         // for the overflow. Otherwise, we need to subtract `c` again, which
         // in that case cannot underflow.
         let l = carry.0.wrapping_sub(1) & c.0;
-        out.wrapping_sub(&Self::from_word(l))
+        let (out, _) = out.sbb(&Uint::from_word(l), Limb::ZERO);
+        out
     }
 }
-
 impl<const LIMBS: usize> AddMod for Uint<LIMBS> {
     type Output = Self;
-
     fn add_mod(&self, rhs: &Self, p: &Self) -> Self {
         debug_assert!(self < p);
         debug_assert!(rhs < p);
         self.add_mod(rhs, p)
     }
 }
-
 #[cfg(all(test, feature = "rand"))]
 mod tests {
     use crate::{Limb, NonZero, Random, RandomMod, Uint, U256};
     use rand_core::SeedableRng;
-
+    // TODO(tarcieri): additional tests + proptests
     #[test]
     fn add_mod_nist_p256() {
         let a =
@@ -58,14 +60,11 @@ mod tests {
             U256::from_be_hex("d5777c45019673125ad240f83094d4252d829516fac8601ed01979ec1ec1a251");
         let n =
             U256::from_be_hex("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
-
         let actual = a.add_mod(&b, &n);
         let expected =
             U256::from_be_hex("1a2472fde50286541d97ca6a3592dd75beb9c9646e40c511b82496cfc3926956");
-
         assert_eq!(expected, actual);
     }
-
     macro_rules! test_add_mod_special {
         ($size:expr, $test_name:ident) => {
             #[test]
@@ -75,13 +74,10 @@ mod tests {
                     NonZero::<Limb>::random(&mut rng),
                     NonZero::<Limb>::random(&mut rng),
                 ];
-
                 for special in &moduli {
-                    let p =
-                        &NonZero::new(Uint::ZERO.wrapping_sub(&Uint::from(special.get()))).unwrap();
-
+                    let p = &NonZero::new(Uint::ZERO.wrapping_sub(&Uint::from_word(special.0)))
+                        .unwrap();
                     let minus_one = p.wrapping_sub(&Uint::ONE);
-
                     let base_cases = [
                         (Uint::ZERO, Uint::ZERO, Uint::ZERO),
                         (Uint::ONE, Uint::ZERO, Uint::ONE),
@@ -93,14 +89,11 @@ mod tests {
                         let x = a.add_mod_special(b, *special.as_ref());
                         assert_eq!(*c, x, "{} + {} mod {} = {} != {}", a, b, p, x, c);
                     }
-
                     for _i in 0..100 {
                         let a = Uint::<$size>::random_mod(&mut rng, p);
                         let b = Uint::<$size>::random_mod(&mut rng, p);
-
                         let c = a.add_mod_special(&b, *special.as_ref());
                         assert!(c < **p, "not reduced: {} >= {} ", c, p);
-
                         let expected = a.add_mod(&b, p);
                         assert_eq!(c, expected, "incorrect result");
                     }
@@ -108,7 +101,6 @@ mod tests {
             }
         };
     }
-
     test_add_mod_special!(1, add_mod_special_1);
     test_add_mod_special!(2, add_mod_special_2);
     test_add_mod_special!(3, add_mod_special_3);
