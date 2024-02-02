@@ -1,10 +1,11 @@
 [package]
-name = "crypto_bigint-dudect"
+name = "crypto-bigint-dudect"
 version = "0.0.0"
 authors = ["RustCrypto Developers"]
 publish = false
 edition = "2021"
+
 [dependencies]
 clap = "2.33"
-crypto_bigint = { path = ".." }
+crypto-bigint = { path = ".." }
 dudect-bencher = "0.5"

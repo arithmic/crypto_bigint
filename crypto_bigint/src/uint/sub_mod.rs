@@ -1,49 +1,81 @@
-//! [`Uint`] subtraction modulus operations.
+//! [`Uint`] modular subtraction operations.
+
 use crate::{Limb, SubMod, Uint};
+
 impl<const LIMBS: usize> Uint<LIMBS> {
-    /// Computes `self - rhs mod p` in constant time.
+    /// Computes `self - rhs mod p`.
     ///
     /// Assumes `self - rhs` as unbounded signed integer is in `[-p, p)`.
-    pub const fn sub_mod(&self, rhs: &Uint<LIMBS>, p: &Uint<LIMBS>) -> Uint<LIMBS> {
-        let (mut out, borrow) = self.sbb(rhs, Limb::ZERO);
+    pub const fn sub_mod(&self, rhs: &Self, p: &Self) -> Self {
+        let (out, mask) = self.sbb(rhs, Limb::ZERO);
+
         // If underflow occurred on the final limb, borrow = 0xfff...fff, otherwise
         // borrow = 0x000...000. Thus, we use it as a mask to conditionally add the modulus.
-        let mut carry = Limb::ZERO;
-        let mut i = 0;
-        while i < LIMBS {
-            let (l, c) = out.limbs[i].adc(p.limbs[i].bitand(borrow), carry);
-            out.limbs[i] = l;
-            carry = c;
-            i += 1;
-        }
-        out
+        out.wrapping_add(&p.bitand_limb(mask))
     }
-    /// Computes `self - rhs mod p` in constant time for the special modulus
+
+    /// Returns `(self..., carry) - (rhs...) mod (p...)`, where `carry <= 1`.
+    /// Assumes `-(p...) <= (self..., carry) - (rhs...) < (p...)`.
+    #[inline(always)]
+    pub(crate) const fn sub_mod_with_carry(&self, carry: Limb, rhs: &Self, p: &Self) -> Self {
+        debug_assert!(carry.0 <= 1);
+
+        let (out, borrow) = self.sbb(rhs, Limb::ZERO);
+
+        // The new `borrow = Word::MAX` iff `carry == 0` and `borrow == Word::MAX`.
+        let mask = carry.wrapping_neg().not().bitand(borrow);
+
+        // If underflow occurred on the final limb, borrow = 0xfff...fff, otherwise
+        // borrow = 0x000...000. Thus, we use it as a mask to conditionally add the modulus.
+        out.wrapping_add(&p.bitand_limb(mask))
+    }
+
+    /// Computes `self - rhs mod p` for the special modulus
     /// `p = MAX+1-c` where `c` is small enough to fit in a single [`Limb`].
     ///
     /// Assumes `self - rhs` as unbounded signed integer is in `[-p, p)`.
     pub const fn sub_mod_special(&self, rhs: &Self, c: Limb) -> Self {
         let (out, borrow) = self.sbb(rhs, Limb::ZERO);
+
         // If underflow occurred, then we need to subtract `c` to account for
         // the underflow. This cannot underflow due to the assumption
         // `self - rhs >= -p`.
         let l = borrow.0 & c.0;
-        let (out, _) = out.sbb(&Uint::from_word(l), Limb::ZERO);
-        out
+        out.wrapping_sub(&Self::from_word(l))
     }
 }
+
 impl<const LIMBS: usize> SubMod for Uint<LIMBS> {
     type Output = Self;
+
     fn sub_mod(&self, rhs: &Self, p: &Self) -> Self {
         debug_assert!(self < p);
         debug_assert!(rhs < p);
         self.sub_mod(rhs, p)
     }
 }
+
 #[cfg(all(test, feature = "rand"))]
 mod tests {
-    use crate::{Limb, NonZero, Random, RandomMod, Uint};
+    use crate::{Limb, NonZero, Random, RandomMod, Uint, U256};
     use rand_core::SeedableRng;
+
+    #[test]
+    fn sub_mod_nist_p256() {
+        let a =
+            U256::from_be_hex("1a2472fde50286541d97ca6a3592dd75beb9c9646e40c511b82496cfc3926956");
+        let b =
+            U256::from_be_hex("d5777c45019673125ad240f83094d4252d829516fac8601ed01979ec1ec1a251");
+        let n =
+            U256::from_be_hex("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551");
+
+        let actual = a.sub_mod(&b, &n);
+        let expected =
+            U256::from_be_hex("44acf6b7e36c1342c2c5897204fe09504e1e2efb1a900377dbc4e7a6a133ec56");
+
+        assert_eq!(expected, actual);
+    }
+
     macro_rules! test_sub_mod {
         ($size:expr, $test_name:ident) => {
             #[test]
@@ -53,6 +85,7 @@ mod tests {
                     NonZero::<Uint<$size>>::random(&mut rng),
                     NonZero::<Uint<$size>>::random(&mut rng),
                 ];
+
                 for p in &moduli {
                     let base_cases = [
                         (1u64, 0u64, 1u64.into()),
@@ -62,24 +95,30 @@ mod tests {
                     for (a, b, c) in &base_cases {
                         let a: Uint<$size> = (*a).into();
                         let b: Uint<$size> = (*b).into();
+
                         let x = a.sub_mod(&b, p);
                         assert_eq!(*c, x, "{} - {} mod {} = {} != {}", a, b, p, x, c);
                     }
+
                     if $size > 1 {
                         for _i in 0..100 {
                             let a: Uint<$size> = Limb::random(&mut rng).into();
                             let b: Uint<$size> = Limb::random(&mut rng).into();
                             let (a, b) = if a < b { (b, a) } else { (a, b) };
+
                             let c = a.sub_mod(&b, p);
                             assert!(c < **p, "not reduced");
                             assert_eq!(c, a.wrapping_sub(&b), "result incorrect");
                         }
                     }
+
                     for _i in 0..100 {
                         let a = Uint::<$size>::random_mod(&mut rng, p);
                         let b = Uint::<$size>::random_mod(&mut rng, p);
+
                         let c = a.sub_mod(&b, p);
                         assert!(c < **p, "not reduced: {} >= {} ", c, p);
+
                         let x = a.wrapping_sub(&b);
                         if a >= b && x < **p {
                             assert_eq!(c, x, "incorrect result");
@@ -89,6 +128,7 @@ mod tests {
             }
         };
     }
+
     macro_rules! test_sub_mod_special {
         ($size:expr, $test_name:ident) => {
             #[test]
@@ -98,10 +138,13 @@ mod tests {
                     NonZero::<Limb>::random(&mut rng),
                     NonZero::<Limb>::random(&mut rng),
                 ];
+
                 for special in &moduli {
-                    let p = &NonZero::new(Uint::ZERO.wrapping_sub(&Uint::from_word(special.0)))
-                        .unwrap();
+                    let p =
+                        &NonZero::new(Uint::ZERO.wrapping_sub(&Uint::from(special.get()))).unwrap();
+
                     let minus_one = p.wrapping_sub(&Uint::ONE);
+
                     let base_cases = [
                         (Uint::ZERO, Uint::ZERO, Uint::ZERO),
                         (Uint::ONE, Uint::ZERO, Uint::ONE),
@@ -113,11 +156,14 @@ mod tests {
                         let x = a.sub_mod_special(&b, *special.as_ref());
                         assert_eq!(*c, x, "{} - {} mod {} = {} != {}", a, b, p, x, c);
                     }
+
                     for _i in 0..100 {
                         let a = Uint::<$size>::random_mod(&mut rng, p);
                         let b = Uint::<$size>::random_mod(&mut rng, p);
+
                         let c = a.sub_mod_special(&b, *special.as_ref());
                         assert!(c < **p, "not reduced: {} >= {} ", c, p);
+
                         let expected = a.sub_mod(&b, p);
                         assert_eq!(c, expected, "incorrect result");
                     }
@@ -125,9 +171,11 @@ mod tests {
             }
         };
     }
+
     // Test requires 1-limb is capable of representing a 64-bit integer
     #[cfg(target_pointer_width = "64")]
     test_sub_mod!(1, sub1);
+
     test_sub_mod!(2, sub2);
     test_sub_mod!(3, sub3);
     test_sub_mod!(4, sub4);
@@ -139,6 +187,7 @@ mod tests {
     test_sub_mod!(10, sub10);
     test_sub_mod!(11, sub11);
     test_sub_mod!(12, sub12);
+
     test_sub_mod_special!(1, sub_mod_special_1);
     test_sub_mod_special!(2, sub_mod_special_2);
     test_sub_mod_special!(3, sub_mod_special_3);

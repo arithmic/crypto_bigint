@@ -1,6 +1,6 @@
 //! Big integers are represented as an array of smaller CPU word-size integers
 //! called "limbs".
-#![allow(clippy::derive_hash_xor_eq)]
+
 mod add;
 mod bit_and;
 mod bit_not;
@@ -11,117 +11,167 @@ mod cmp;
 mod encoding;
 mod from;
 mod mul;
-#[cfg(feature = "rand_core")]
-mod rand;
+mod neg;
 mod shl;
 mod shr;
 mod sub;
-use crate::{Bounded, Zero};
+
+#[cfg(feature = "rand_core")]
+mod rand;
+
+use crate::{Bounded, ConstCtOption, ConstZero, Constants, NonZero};
 use core::fmt;
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
+
 #[cfg(feature = "serde")]
 use serdect::serde::{Deserialize, Deserializer, Serialize, Serializer};
-use subtle::{Choice, ConditionallySelectable};
+
 #[cfg(not(any(target_pointer_width = "32", target_pointer_width = "64")))]
 compile_error!("this crate builds on 32-bit and 64-bit platforms only");
+
 //
 // 32-bit definitions
 //
+
 /// Inner integer type that the [`Limb`] newtype wraps.
 #[cfg(target_pointer_width = "32")]
 pub type Word = u32;
-/// Signed integer type that corresponds to [`Word`].
-#[cfg(target_pointer_width = "32")]
-pub(crate) type SignedWord = i32;
+
 /// Unsigned wide integer type: double the width of [`Word`].
 #[cfg(target_pointer_width = "32")]
 pub type WideWord = u64;
-/// Signed wide integer type: double the width of [`Limb`].
-#[cfg(target_pointer_width = "32")]
-pub(crate) type WideSignedWord = i64;
+
 //
 // 64-bit definitions
 //
+
 /// Unsigned integer type that the [`Limb`] newtype wraps.
 #[cfg(target_pointer_width = "64")]
 pub type Word = u64;
-/// Signed integer type that corresponds to [`Word`].
-#[cfg(target_pointer_width = "64")]
-pub(crate) type SignedWord = i64;
+
 /// Wide integer type: double the width of [`Word`].
 #[cfg(target_pointer_width = "64")]
 pub type WideWord = u128;
-/// Signed wide integer type: double the width of [`SignedWord`].
-#[cfg(target_pointer_width = "64")]
-pub(crate) type WideSignedWord = i128;
-/// Highest bit in a [`Limb`].
-pub(crate) const HI_BIT: usize = Limb::BITS - 1;
-/// Big integers are represented as an array of smaller CPU word-size integers
-/// called "limbs".
-#[derive(Copy, Clone, Debug, Default, Hash)]
+
+/// Big integers are represented as an array/vector of smaller CPU word-size integers called
+/// "limbs".
+///
+/// The [`Limb`] type uses a 32-bit or 64-bit saturated representation, depending on the target.
+/// All bits of an inner [`Word`] are used to represent larger big integer types.
+// Our PartialEq impl only differs from the default one by being constant-time, so this is safe
+#[allow(clippy::derived_hash_with_manual_eq)]
+#[derive(Copy, Clone, Default, Hash)]
 #[repr(transparent)]
 pub struct Limb(pub Word);
+
 impl Limb {
     /// The value `0`.
     pub const ZERO: Self = Limb(0);
+
     /// The value `1`.
     pub const ONE: Self = Limb(1);
+
     /// Maximum value this [`Limb`] can express.
     pub const MAX: Self = Limb(Word::MAX);
+
+    /// Highest bit in a [`Limb`].
+    pub(crate) const HI_BIT: u32 = Limb::BITS - 1;
+
     // 32-bit
+
     /// Size of the inner integer in bits.
     #[cfg(target_pointer_width = "32")]
-    pub const BITS: usize = 32;
+    pub const BITS: u32 = 32;
     /// Size of the inner integer in bytes.
     #[cfg(target_pointer_width = "32")]
     pub const BYTES: usize = 4;
+
     // 64-bit
+
     /// Size of the inner integer in bits.
     #[cfg(target_pointer_width = "64")]
-    pub const BITS: usize = 64;
+    pub const BITS: u32 = 64;
     /// Size of the inner integer in bytes.
     #[cfg(target_pointer_width = "64")]
     pub const BYTES: usize = 8;
-    /// Return `a` if `c`==0 or `b` if `c`==`Word::MAX`.
+
+    /// Convert to a [`NonZero<Limb>`].
     ///
-    /// Const-friendly: we can't yet use `subtle` in `const fn` contexts.
-    #[inline]
-    pub(crate) const fn ct_select(a: Self, b: Self, c: Word) -> Self {
-        Self(a.0 ^ (c & (a.0 ^ b.0)))
+    /// Returns some if the original value is non-zero, and false otherwise.
+    pub const fn to_nz(self) -> ConstCtOption<NonZero<Self>> {
+        ConstCtOption::new(NonZero(self), self.is_nonzero())
     }
 }
+
 impl Bounded for Limb {
-    const BITS: usize = Self::BITS;
+    const BITS: u32 = Self::BITS;
     const BYTES: usize = Self::BYTES;
 }
+
+impl Constants for Limb {
+    const ONE: Self = Self::ONE;
+    const MAX: Self = Self::MAX;
+}
+
 impl ConditionallySelectable for Limb {
     #[inline]
     fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
         Self(Word::conditional_select(&a.0, &b.0, choice))
     }
 }
-impl Zero for Limb {
+
+impl ConstZero for Limb {
     const ZERO: Self = Self::ZERO;
 }
+
+impl num_traits::Zero for Limb {
+    fn zero() -> Self {
+        Self::ZERO
+    }
+
+    fn is_zero(&self) -> bool {
+        self.ct_eq(&Self::ZERO).into()
+    }
+}
+
+impl num_traits::One for Limb {
+    fn one() -> Self {
+        Self::ONE
+    }
+
+    fn is_one(&self) -> bool {
+        self.ct_eq(&Self::ONE).into()
+    }
+}
+
+impl fmt::Debug for Limb {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Limb(0x{self:X})")
+    }
+}
+
 impl fmt::Display for Limb {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::UpperHex::fmt(self, f)
     }
 }
+
 impl fmt::LowerHex for Limb {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:0width$x}", &self.0, width = Self::BYTES * 2)
     }
 }
+
 impl fmt::UpperHex for Limb {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:0width$X}", &self.0, width = Self::BYTES * 2)
     }
 }
+
 #[cfg(feature = "serde")]
-#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 impl<'de> Deserialize<'de> for Limb {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -130,9 +180,9 @@ impl<'de> Deserialize<'de> for Limb {
         Ok(Self(Word::deserialize(deserializer)?))
     }
 }
+
 #[cfg(feature = "serde")]
-#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
-impl<'de> Serialize for Limb {
+impl Serialize for Limb {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -140,6 +190,22 @@ impl<'de> Serialize for Limb {
         self.0.serialize(serializer)
     }
 }
+
 #[cfg(feature = "zeroize")]
-#[cfg_attr(docsrs, doc(cfg(feature = "zeroize")))]
 impl zeroize::DefaultIsZeroes for Limb {}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "alloc")]
+    use {super::Limb, alloc::format};
+
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn debug() {
+        #[cfg(target_pointer_width = "32")]
+        assert_eq!(format!("{:?}", Limb(42)), "Limb(0x0000002A)");
+
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!(format!("{:?}", Limb(42)), "Limb(0x000000000000002A)");
+    }
+}

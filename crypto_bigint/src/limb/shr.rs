@@ -1,56 +1,84 @@
 //! Limb right bitshift
-use crate::{Limb, Word};
+
+use crate::{Limb, WrappingShr};
 use core::ops::{Shr, ShrAssign};
+
 impl Limb {
-    /// Computes `self >> rhs`.
+    /// Computes `self >> shift`.
+    /// Panics if `shift` overflows `Limb::BITS`.
     #[inline(always)]
-    pub const fn shr(self, rhs: Self) -> Self {
-        Limb(self.0 >> rhs.0)
+    pub const fn shr(self, shift: u32) -> Self {
+        Limb(self.0 >> shift)
+    }
+
+    /// Computes `self >> 1` and return the result and the carry (0 or `1 << HI_BIT`).
+    #[inline(always)]
+    pub(crate) const fn shr1(self) -> (Self, Self) {
+        (Self(self.0 >> 1), Self(self.0 << Self::HI_BIT))
     }
 }
-impl Shr for Limb {
-    type Output = Self;
-    #[inline(always)]
-    fn shr(self, rhs: Self) -> Self::Output {
-        self.shr(rhs)
+
+macro_rules! impl_shr {
+    ($($shift:ty),+) => {
+        $(
+            impl Shr<$shift> for Limb {
+                type Output = Limb;
+
+                #[inline]
+                fn shr(self, shift: $shift) -> Limb {
+                     Self::shr(self, u32::try_from(shift).expect("invalid shift"))
+                }
+            }
+
+            impl Shr<$shift> for &Limb {
+                type Output = Limb;
+
+                #[inline]
+                fn shr(self, shift: $shift) -> Limb {
+                   *self >> shift
+                }
+            }
+
+            impl ShrAssign<$shift> for Limb {
+                #[inline]
+                fn shr_assign(&mut self, shift: $shift) {
+                    *self = *self >> shift;
+                }
+            }
+        )+
+    };
+}
+
+impl_shr!(i32, u32, usize);
+
+impl WrappingShr for Limb {
+    #[inline]
+    fn wrapping_shr(&self, shift: u32) -> Limb {
+        Self(self.0.wrapping_shr(shift))
     }
 }
-impl Shr<usize> for Limb {
-    type Output = Self;
-    #[inline(always)]
-    fn shr(self, rhs: usize) -> Self::Output {
-        self.shr(Limb(rhs as Word))
-    }
-}
-impl ShrAssign for Limb {
-    #[inline(always)]
-    fn shr_assign(&mut self, other: Self) {
-        *self = self.shr(other);
-    }
-}
-impl ShrAssign<usize> for Limb {
-    #[inline(always)]
-    fn shr_assign(&mut self, other: usize) {
-        *self = self.shr(Limb(other as Word));
-    }
-}
+
 #[cfg(test)]
 mod tests {
     use crate::Limb;
+
     #[test]
     fn shr1() {
         assert_eq!(Limb(2) >> 1, Limb(1));
     }
+
     #[test]
     fn shr2() {
         assert_eq!(Limb(16) >> 2, Limb(4));
     }
+
     #[test]
     fn shr_assign1() {
         let mut l = Limb::ONE;
         l >>= 1;
         assert_eq!(l, Limb::ZERO);
     }
+
     #[test]
     fn shr_assign2() {
         let mut l = Limb(32);

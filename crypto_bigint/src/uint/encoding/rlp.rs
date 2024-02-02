@@ -1,7 +1,8 @@
 //! Recursive Length Prefix (RLP) encoding support.
+
 use crate::{Encoding, Uint};
 use rlp::{DecoderError, Rlp, RlpStream};
-#[cfg_attr(docsrs, doc(cfg(feature = "rlp")))]
+
 impl<const LIMBS: usize> rlp::Encodable for Uint<LIMBS>
 where
     Self: Encoding,
@@ -9,13 +10,15 @@ where
     fn rlp_append(&self, stream: &mut RlpStream) {
         let bytes = self.to_be_bytes();
         let mut bytes_stripped = bytes.as_ref();
+
         while bytes_stripped.first().cloned() == Some(0) {
             bytes_stripped = &bytes_stripped[1..];
         }
+
         stream.encoder().encode_value(bytes_stripped);
     }
 }
-#[cfg_attr(docsrs, doc(cfg(feature = "rlp")))]
+
 impl<const LIMBS: usize> rlp::Decodable for Uint<LIMBS>
 where
     Self: Encoding,
@@ -32,16 +35,20 @@ where
                     .len()
                     .checked_sub(bytes.len())
                     .ok_or(DecoderError::RlpIsTooBig)?;
+
                 repr.as_mut()[offset..].copy_from_slice(bytes);
                 Ok(Self::from_be_bytes(repr))
             }
         })
     }
 }
+
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use crate::U256;
     use hex_literal::hex;
+
     /// U256 test vectors from the `rlp` crate.
     ///
     /// <https://github.com/paritytech/parity-common/blob/faad8b6/rlp/tests/tests.rs#L216-L222>
@@ -60,6 +67,7 @@ mod tests {
             &hex!("a08090a0b0c0d0e0f00910203040506077000000000000000100000000000012f0"),
         ),
     ];
+
     #[test]
     fn round_trip() {
         for &(uint, expected_bytes) in U256_VECTORS {

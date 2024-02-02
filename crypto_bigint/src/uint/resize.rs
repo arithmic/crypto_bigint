@@ -1,4 +1,5 @@
 use super::Uint;
+
 impl<const LIMBS: usize> Uint<LIMBS> {
     /// Construct a `Uint<T>` from the unsigned integer value,
     /// truncating the upper bits if the value is too large to be
@@ -15,15 +16,18 @@ impl<const LIMBS: usize> Uint<LIMBS> {
         res
     }
 }
+
 #[cfg(test)]
 mod tests {
     use crate::{U128, U64};
+
     #[test]
     fn resize_larger() {
         let u = U64::from_be_hex("AAAAAAAABBBBBBBB");
         let u2: U128 = u.resize();
         assert_eq!(u2, U128::from_be_hex("0000000000000000AAAAAAAABBBBBBBB"));
     }
+
     #[test]
     fn resize_smaller() {
         let u = U128::from_be_hex("AAAAAAAABBBBBBBBCCCCCCCCDDDDDDDD");
