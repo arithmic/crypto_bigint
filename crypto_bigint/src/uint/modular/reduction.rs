@@ -1,4 +1,5 @@
 use crate::{Limb, Uint, WideWord, Word};
+use crate::{U256};
 /// Algorithm 14.32 in Handbook of Applied Cryptography (https://cacr.uwaterloo.ca/hac/about/chap14.pdf)
 pub const fn montgomery_reduction<const LIMBS: usize>(
     lower_upper: (Uint<LIMBS>, Uint<LIMBS>),
